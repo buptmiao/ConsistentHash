@@ -2,22 +2,8 @@
 #include <string>
 #include <iostream>
 
-#include "consistent.h"
+#include "consistenthash.h"
 
-struct SdbmHash
-{
-	size_t operator()(const char * str) const
-	{
-		size_t hash = 0;
-		int c;
-
-		while ((c = *str++)) {
-			hash = c + (hash << 6) + (hash << 16) - hash;
-		}
-
-		return hash;
-	}
-};
 
 class CacheServer
 {
@@ -55,7 +41,7 @@ int main()
 {
 	typedef std::map<std::string, CacheServer> ServerMap;
 	ServerMap servers;
-	Consistent::HashRing<std::string, std::string, SdbmHash> ring(4, SdbmHash());
+	ConsistentHash::HashRing<std::string, std::string> ring(4);
 
 	// Create some cache servers
 	servers["cache1.example.com"] = CacheServer();
@@ -64,7 +50,7 @@ int main()
 
 	// Add their host names to the hash ring
 	for (ServerMap::const_iterator it = servers.begin(); it != servers.end(); ++it) {
-		std::cout << "Adding " << it->first << " with hash " << ring.AddNode(it->first) << std::endl;
+		std::cout << "Adding " << it->first << " with hash " << ring.add(it->first) << std::endl;
 	}
 
 	// Store some data
@@ -72,14 +58,14 @@ int main()
 	const char* colours[] = {"red", "green", "yellow", "orange", "black", "pink"};
 	const unsigned int numfruits = sizeof(fruits) / sizeof(numfruits);
 	for (unsigned int f = 0; f < numfruits; f++) {
-		std::string host = ring.GetNode(fruits[f]);
+		std::string host = ring.get(fruits[f]);
 		std::cout << "Storing " << fruits[f] << " on server " << host << std::endl;
 		servers[host].Put(fruits[f], colours[f]);
 	}
 
 	// Read it back
 	for (unsigned int f = 0; f < numfruits; f++) {
-		std::string host = ring.GetNode(fruits[f]);
+		std::string host = ring.get(fruits[f]);
 		std::string colour = servers[host].Get(fruits[f]);
 		std::cout << "Found " << fruits[f] << " on server " << host << " (" << colour << ")" << std::endl;
 	}

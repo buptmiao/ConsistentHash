@@ -3,13 +3,6 @@
 #define _CONSISTENT_H
 
 #include <map>
-#ifdef __GNUC__
-#include <ext/hash_map>
-#define HASH_NAMESPACE __gnu_cxx
-#else
-#include <hash_map>
-#define HASH_NAMESPACE std
-#endif
 #include <string>
 #include <sstream>
 
@@ -42,24 +35,38 @@ std::string Stringify(const char* const& str)
 {
 	return str;
 }
+struct SdbmHash
+{
+	size_t operator()(const char * str) const
+	{
+		size_t hash = 0;
+		int c;
 
+		while ((c = *str++)) {
+			hash = c + (hash << 6) + (hash << 16) - hash;
+		}
+
+		return hash;
+	}
+};
 }
 
-namespace Consistent
+namespace ConsistentHash
 {
 
 class EmptyRingException
 {
 };
 
-template <class Node, class Data, class Hash = HASH_NAMESPACE::hash<const char*> >
+template <class Node, class Data, class Hash = SdbmHash >
+
 class HashRing
 {
 public:
 	typedef std::map<size_t, Node> NodeMap;
 
 	HashRing(unsigned int replicas)
-		: replicas_(replicas), hash_(HASH_NAMESPACE::hash<const char*>())
+		: replicas_(replicas), hash_(SdbmHash())
 	{
 	}
 
@@ -68,9 +75,9 @@ public:
 	{
 	}
 
-	size_t AddNode(const Node& node);
-	void RemoveNode(const Node& node);
-	const Node& GetNode(const Data& data) const;
+	size_t add(const Node& node);
+	void remove(const Node& node);
+	const Node& get(const Data& data) const;
 
 private:
 	NodeMap ring_;
@@ -79,7 +86,7 @@ private:
 };
 
 template <class Node, class Data, class Hash>
-size_t HashRing<Node, Data, Hash>::AddNode(const Node& node)
+size_t HashRing<Node, Data, Hash>::add(const Node& node)
 {
 	size_t hash;
 	std::string nodestr = Stringify(node);
@@ -91,7 +98,7 @@ size_t HashRing<Node, Data, Hash>::AddNode(const Node& node)
 }
 
 template <class Node, class Data, class Hash>
-void HashRing<Node, Data, Hash>::RemoveNode(const Node& node)
+void HashRing<Node, Data, Hash>::remove(const Node& node)
 {
 	std::string nodestr = Stringify(node);
 	for (unsigned int r = 0; r < replicas_; r++) {
@@ -101,17 +108,16 @@ void HashRing<Node, Data, Hash>::RemoveNode(const Node& node)
 }
 
 template <class Node, class Data, class Hash>
-const Node& HashRing<Node, Data, Hash>::GetNode(const Data& data) const
+const Node& HashRing<Node, Data, Hash>::get(const Data& data) const
 {
 	if (ring_.empty()) {
 		throw EmptyRingException();
 	}
 	size_t hash = hash_(Stringify(data).c_str());
 	typename NodeMap::const_iterator it;
-	// Look for the first node >= hash
+	
 	it = ring_.lower_bound(hash);
 	if (it == ring_.end()) {
-		// Wrapped around; get the first node
 		it = ring_.begin();
 	}
 	return it->second;
